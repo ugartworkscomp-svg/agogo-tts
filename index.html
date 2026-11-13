@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>agogoTTS — Mawu a Chichewa, momveka bwino</title>
+
+<!-- SEO & Social -->
+<meta name="description" content="agogoTTS turns written Chichewa into natural speech, entirely on your device. Free, private, no servers. Built from scratch in Malawi." />
+<meta name="theme-color" content="#2C3A67" />
+<meta property="og:title" content="agogoTTS — Mawu a Chichewa, momveka bwino" />
+<meta property="og:description" content="Chichewa text → natural speech. Runs entirely in your browser. No servers, no tracking." />
+<meta property="og:type" content="website" />
+
+<!-- Inline Favicon -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M 38 42 C 18 10, 48 5, 50 42 Z' fill='%23C8943E' opacity='0.4'/%3E%3Cpath d='M 62 42 C 82 10, 52 5, 50 42 Z' fill='%23C8943E' opacity='0.4'/%3E%3Crect x='38' y='35' width='24' height='45' rx='12' fill='%232C3A67'/%3E%3Crect x='38' y='45' width='24' height='7' fill='%23FAF6EC'/%3E%3Crect x='38' y='62' width='24' height='7' fill='%23FAF6EC'/%3E%3Cpolygon points='46,80 54,80 50,89' fill='%23B5563A'/%3E%3C/svg%3E" />
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- ONNX Runtime -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+
+<style>
+/* ============================================================
+   TOKENS & RESET
+   ============================================================ */
+:root {
+  --paper: #FAF6EC;
+  --paper-deep: #F4EDDD;
+  --paper-edge: #E9DFC8;
+  --ink: #2B2620;
+  --ink-soft: #5C5448;
+  --ink-faint: #8A7F6E;
+  --indigo: #2C3A67;
+  --indigo-deep: #1E294D;
+  --indigo-soft: #4A5A8C;
+  --ochre: #C8943E;
+  --ochre-soft: #E0B96B;
+  --ochre-deep: #8E651F;
+  --terracotta: #B5563A;
+  --malawi-red: #CE1126;
+  --malawi-green: #339E35;
+  --malawi-black: #000000;
+
+  --font-serif: "Fraunces", Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --paper-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+
+body {
+  background-color: var(--paper);
+  background-image: var(--paper-noise);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding-top: env(safe-area-inset-top);
+}
+
+h1, h2, h3 { font-family: var(--font-serif); font-weight: 500; letter-spacing: -0.01em; color: var(--ink); }
+h1 { font-size: 40px; line-height: 1.1; }
+h2 { font-size: 22px; line-height: 1.2; }
+p { margin: 0; }
+a { color: var(--indigo); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(44, 58, 103, 0.3); }
+a:hover { text-decoration-color: var(--indigo); }
+::selection { background: rgba(200, 148, 62, 0.35); color: var(--ink); }
+:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(200, 148, 62, 0.55); border-radius: 4px; }
+button { font: inherit; cursor: pointer; }
+.hidden { display: none !important; }
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+header.site {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 40px 16px;
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.bee-icon { width: 46px; height: 46px; flex-shrink: 0; overflow: visible; }
+.bee-icon .bee-wing, .bee-icon .bee-antenna { transform-box: view-box; will-change: transform; }
+.bee-icon .bee-wing-left  { transform-origin: 44px 42px; }
+.bee-icon .bee-wing-right { transform-origin: 56px 42px; }
+.bee-icon .bee-antenna-left  { transform-origin: 44px 35px; }
+.bee-icon .bee-antenna-right { transform-origin: 56px 35px; }
+.bee-icon .bee-antenna-left  { animation: bee-idle-sway 4s ease-in-out infinite; }
+.bee-icon .bee-antenna-right { animation: bee-idle-sway 4s ease-in-out infinite 0.5s; }
+@keyframes bee-idle-sway { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+.bee-icon.synthesizing .bee-antenna-left  { animation: bee-wiggle 0.45s ease-in-out infinite; }
+.bee-icon.synthesizing .bee-antenna-right { animation: bee-wiggle 0.45s ease-in-out infinite reverse; }
+@keyframes bee-wiggle { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
+.bee-icon.playing .bee-wing-left  { animation: bee-flutter 0.14s ease-in-out infinite; }
+.bee-icon.playing .bee-wing-right { animation: bee-flutter 0.14s ease-in-out infinite reverse; }
+@keyframes bee-flutter { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
+
+.brand-text { display: flex; flex-direction: column; min-width: 0; }
+.wordmark { font-family: var(--font-serif); font-size: 22px; font-weight: 500; color: var(--indigo); line-height: 1; letter-spacing: -0.01em; white-space: nowrap; }
+.tagline { font-size: 12px; color: var(--ink-faint); margin-top: 4px; font-style: italic; }
+
+.header-right { display: flex; align-items: center; gap: 12px; position: relative; }
+nav.tabs { display: flex; gap: 4px; background: var(--paper-deep); border: 1px solid var(--paper-edge); border-radius: 8px; padding: 4px; flex-shrink: 0; }
+nav.tabs button { background: transparent; border: none; color: var(--ink-soft); font-size: 13px; font-weight: 500; padding: 7px 14px; border-radius: 5px; transition: background 140ms, color 140ms; }
+nav.tabs button:hover { color: var(--ink); }
+nav.tabs button.active { background: var(--indigo); color: var(--paper); }
+
+.menu-btn { background: transparent; border: 1px solid transparent; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--ink-faint); transition: background 140ms, border-color 140ms, color 140ms; }
+.menu-btn:hover, .menu-btn[aria-expanded="true"] { background: var(--paper-deep); border-color: var(--paper-edge); color: var(--indigo); }
+.menu-btn svg { width: 18px; height: 18px; }
+
+.menu-dropdown { position: absolute; top: calc(100% + 10px); right: 0; min-width: 260px; background: var(--paper-deep); border: 1px solid var(--paper-edge); border-radius: 10px; box-shadow: 0 20px 40px -16px rgba(43,38,32,0.28); padding: 6px; z-index: 60; opacity: 0; transform: translateY(-4px); pointer-events: none; transition: opacity 160ms, transform 160ms; }
+.menu-dropdown.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.menu-label { font-size: 10px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: var(--ink-faint); padding: 8px 10px 6px; }
+.menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; background: transparent; border: none; border-radius: 6px; font-size: 13px; color: var(--ink); text-align: left; transition: background 140ms, color 140ms; }
+.menu-item:hover { background: var(--paper); color: var(--indigo); }
+.menu-item .menu-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+.menu-item .menu-sub { font-size: 11px; color: var(--ink-faint); margin-top: 1px; }
+.menu-divider { height: 1px; background: var(--paper-edge); margin: 6px 4px; }
+
+.malawi-rule { height: 3px; width: 100%; background: linear-gradient(to right, var(--malawi-black) 0 33.333%, var(--malawi-red) 33.333% 66.666%, var(--malawi-green) 66.666% 100%); opacity: 0.85; }
+
+/* ============================================================
+   MAIN & LAYOUT
+   ============================================================ */
+main { flex: 1; max-width: 780px; width: 100%; margin: 0 auto; padding: 44px 32px 60px; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; animation: fadein 240ms ease; }
+@keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Studio */
+.greeting { margin-bottom: 20px; }
+.greeting h1 { font-style: italic; font-weight: 400; color: var(--indigo); }
+.greeting p { margin-top: 8px; font-size: 16px; color: var(--ink-soft); }
+
+.studio-card { background: var(--paper-deep); border: 1px solid var(--paper-edge); border-radius: 10px; padding: 22px 24px; box-shadow: 0 4px 12px rgba(43,38,32,0.03); }
+.card-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-faint); margin-bottom: 14px; }
+.ond-device-badge { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 11.5px; }
+.ond-device-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--malawi-green); }
+
+.sample-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+.sample-label { font-size: 12px; color: var(--ink-faint); }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--paper); border: 1px solid var(--paper-edge); border-radius: 999px; padding: 4px 10px; font-size: 12.5px; color: var(--indigo); transition: 140ms; }
+.chip:hover { border-color: var(--ochre); background: rgba(200, 148, 62, 0.07); }
+.chip:active { transform: translateY(1px); }
+
+textarea { width: 100%; min-height: 158px; max-height: 320px; resize: vertical; font-family: var(--font-sans); font-size: 16px; color: var(--ink); background-color: var(--paper); border: 1px solid var(--paper-edge); border-radius: 8px; padding: 14px 16px; line-height: 28px; background-image: linear-gradient(to bottom, transparent 27px, rgba(44, 58, 103, 0.10) 27px, rgba(44, 58, 103, 0.10) 28px); background-size: 100% 28px; background-position: 0 14px; background-attachment: local; transition: border-color 140ms, box-shadow 140ms; }
+textarea:focus { outline: none; border-color: var(--indigo-soft); box-shadow: 0 0 0 3px rgba(44, 58, 103, 0.10); }
+.textarea-footer { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-faint); margin-top: 4px; }
+
+.actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; padding-top: 16px; border-top: 1px solid var(--paper-edge); flex-wrap: wrap; }
+.status { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-soft); min-height: 20px; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); transition: background 200ms; }
+.status[data-tone="ochre"] .status-dot { background: var(--ochre); animation: pulse 1s infinite; }
+.status[data-tone="terracotta"] .status-dot { background: var(--terracotta); animation: pulse 0.7s infinite; }
+.status[data-tone="green"] .status-dot { background: var(--malawi-green); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.btn-primary { display: inline-flex; align-items: center; gap: 8px; background: var(--indigo); color: var(--paper); font-size: 14px; font-weight: 500; padding: 11px 20px; border: none; border-radius: 7px; transition: 140ms; }
+.btn-primary:hover:not(:disabled) { background: var(--indigo-deep); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary svg { width: 14px; height: 14px; }
+.btn-secondary { background: transparent; color: var(--indigo); font-size: 12.5px; font-weight: 500; padding: 7px 13px; border: 1px solid rgba(44, 58, 103, 0.25); border-radius: 6px; transition: 140ms; }
+.btn-secondary:hover { border-color: var(--indigo); background: rgba(44, 58, 103, 0.04); }
+
+.voice-disclaimer { font-size: 11px; color: var(--ink-faint); margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--paper-edge); text-align: center; }
+
+/* Download Bar */
+.download-panel { display: none; margin-top: 14px; padding: 14px 16px; background: var(--paper); border: 1px solid var(--paper-edge); border-radius: 8px; }
+.download-panel.active { display: block; }
+.download-title { font-size: 13px; font-weight: 500; margin-bottom: 8px; display: flex; justify-content: space-between; }
+.download-cancel { background: none; border: none; font-size: 11.5px; color: var(--ink-faint); text-decoration: underline; }
+.download-bar { height: 6px; background: var(--paper-edge); border-radius: 3px; overflow: hidden; }
+.download-fill { height: 100%; width: 0%; background: var(--ochre); transition: width 200ms; }
+.download-meta { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-faint); margin-top: 6px; }
+
+/* Audio Result */
+.audio-result { margin-top: 22px; background: var(--paper-deep); border: 1px solid var(--paper-edge); border-radius: 10px; padding: 18px 22px; box-shadow: 0 4px 12px rgba(43,38,32,0.03); }
+.audio-header { display: flex; justify-content: space-between; margin-bottom: 14px; }
+.audio-header h2 { font-style: italic; font-weight: 400; font-size: 18px; color: var(--indigo); }
+.player { display: flex; align-items: center; gap: 14px; }
+.play-btn { width: 40px; height: 40px; border-radius: 50%; background: var(--indigo); color: var(--paper); border: none; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.waveform { flex: 1; height: 36px; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+.waveform .bar { flex: 1; background: var(--indigo-soft); border-radius: 1px; min-height: 3px; transition: background 120ms; }
+.waveform.playing .bar { background: var(--ochre); animation: barpulse 1s infinite; }
+@keyframes barpulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+.time { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); }
+.quality-hint { margin-top: 12px; font-size: 12px; color: var(--ink-faint); }
+
+/* Library & Settings */
+.library-list { list-style: none; margin-top: 22px; border-top: 1px solid var(--paper-edge); }
+.library-list li { display: flex; justify-content: space-between; align-items: center; padding: 16px 4px; border-bottom: 1px solid var(--paper-edge); gap: 16px; }
+.lib-text { font-family: var(--font-serif); font-size: 16px; }
+.lib-meta { font-size: 11.5px; color: var(--ink-faint); }
+.lib-actions { display: flex; gap: 6px; }
+.icon-btn { background: var(--paper); border: 1px solid var(--paper-edge); width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--indigo); }
+.icon-btn svg { width: 12px; height: 12px; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--ink-faint); font-size: 13px; }
+
+.setting-group { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-bottom: 1px solid var(--paper-edge); gap: 24px; }
+.setting-label > div:first-child { font-size: 14px; font-weight: 500; }
+.setting-label .muted { font-size: 12.5px; color: var(--ink-faint); margin-top: 3px; }
+.segmented { display: inline-flex; background: var(--paper); border: 1px solid var(--paper-edge); border-radius: 6px; padding: 3px; }
+.segmented button { background: transparent; border: none; padding: 6px 12px; font-size: 12.5px; font-weight: 500; color: var(--ink-soft); border-radius: 4px; }
+.segmented button.active { background: var(--indigo); color: var(--paper); }
+.status-ok { color: var(--malawi-green); font-size: 13px; font-weight: 500; }
+
+/* Footer */
+footer { display: flex; justify-content: space-between; align-items: center; padding: 22px 40px; max-width: 1180px; margin: 0 auto; width: 100%; font-size: 12px; color: var(--ink-faint); border-top: 1px solid var(--paper-edge); flex-wrap: wrap; gap: 16px; }
+.footer-links button { background: none; border: none; color: var(--ink-faint); text-decoration: underline; padding: 0; margin-right: 12px; }
+
+/* Modals & Toasts */
+.modal-overlay { position: fixed; inset: 0; background: rgba(43, 38, 32, 0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 200ms; }
+.modal-overlay.active { opacity: 1; pointer-events: auto; }
+.modal { background: var(--paper); border: 1px solid var(--paper-edge); border-radius: 12px; max-width: 540px; width: 100%; padding: 32px 34px; box-shadow: 0 20px 60px -20px rgba(43, 38, 32, 0.35); position: relative; max-height: 90vh; overflow-y: auto; }
+.modal h2 { font-style: italic; font-weight: 400; color: var(--indigo); font-size: 24px; margin-bottom: 6px; }
+.modal .modal-sub { font-size: 12px; color: var(--ink-faint); margin-bottom: 20px; }
+.modal-close { position: absolute; top: 16px; right: 16px; background: transparent; border: none; font-size: 20px; color: var(--ink-faint); }
+.modal-section { padding-top: 16px; border-top: 1px solid var(--paper-edge); margin-top: 16px; }
+.modal-section h3 { font-family: var(--font-sans); font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 8px; }
+.modal-section p, .modal-section ul, .modal-section ol { font-size: 13.5px; color: var(--ink-soft); line-height: 1.6; }
+.modal-section ul, .modal-section ol { padding-left: 20px; }
+
+.toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 150; pointer-events: none; }
+.toast { background: var(--indigo); color: var(--paper); padding: 12px 18px; border-radius: 8px; font-size: 13px; box-shadow: 0 10px 30px -10px rgba(43, 38, 32, 0.4); animation: toastin 220ms; max-width: 350px; }
+.toast.error { background: var(--terracotta); }
+.toast.success { background: var(--malawi-green); }
+@keyframes toastin { from { opacity: 0; transform: translateY(12px); } }
+
+/* 404 Page */
+#page-404 { display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 70vh; padding: 20px; }
+#page-404.active { display: flex; }
+#page-404 h1 { font-size: 100px; font-family: var(--font-serif); color: var(--ochre); line-height: 1; margin-bottom: 20px; }
+#page-404 p { font-size: 16px; color: var(--ink-soft); margin-bottom: 20px; max-width: 400px; }
+#page-404 a { font-weight: 500; text-decoration: none; background: var(--indigo); color: var(--paper); padding: 10px 20px; border-radius: 6px; }
+
+@media (max-width: 700px) {
+  header.site { flex-wrap: wrap; padding: 16px 20px 12px; }
+  .header-right { width: 100%; justify-content: space-between; margin-top: 12px; }
+  nav.tabs { flex: 1; justify-content: space-between; }
+  .menu-dropdown { right: 0; min-width: 100%; }
+  main { padding: 24px 20px 40px; }
+  .greeting h1 { font-size: 32px; }
+  .actions { flex-direction: column-reverse; align-items: stretch; }
+  .btn-primary { justify-content: center; }
+  .setting-group { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .toast-container { left: 20px; right: 20px; bottom: 20px; }
+  .toast { max-width: none; text-align: center; }
+  footer { flex-direction: column; align-items: flex-start; padding: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     REAL APP CONTENT
+     ═══════════════════════════════════════════════════════ -->
+<div id="app-content">
+  <header class="site">
+    <div class="brand">
+      <svg class="bee-icon" id="bee" viewBox="0 0 100 100" aria-hidden="true">
+        <path class="bee-wing bee-wing-left" d="M 38 42 C 18 10, 48 5, 50 42 Z" fill="var(--ochre)" opacity="0.45"/>
+        <path class="bee-wing bee-wing-right" d="M 62 42 C 82 10, 52 5, 50 42 Z" fill="var(--ochre)" opacity="0.45"/>
+        <rect x="38" y="35" width="24" height="45" rx="12" fill="var(--indigo)"/>
+        <rect x="38" y="45" width="24" height="7" fill="var(--paper)"/>
+        <rect x="38" y="62" width="24" height="7" fill="var(--paper)"/>
+        <polygon points="46,80 54,80 50,89" fill="var(--terracotta)"/>
+        <line class="bee-antenna bee-antenna-left" x1="44" y1="35" x2="36" y2="22" stroke="var(--indigo)" stroke-width="1.8" stroke-linecap="round"/>
+        <line class="bee-antenna bee-antenna-right" x1="56" y1="35" x2="64" y2="22" stroke="var(--indigo)" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <div class="brand-text">
+        <div class="wordmark">agogoTTS</div>
+        <div class="tagline" lang="ny">Mawu a Chichewa, momveka bwino.</div>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <nav class="tabs" role="tablist">
+        <button data-tab="studio" class="active">Studio</button>
+        <button data-tab="library">My Audio</button>
+        <button data-tab="settings">Settings</button>
+      </nav>
+      <button class="menu-btn" id="menu-btn" aria-label="Menu">
+        <svg viewBox="0 0 20 20"><line x1="3" y1="6" x2="17" y2="6" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="10" x2="17" y2="10" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="14" x2="17" y2="14" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+      <div class="menu-dropdown" id="menu-dropdown" role="menu">
+        <div class="menu-label">Get the app</div>
+        <button class="menu-item" data-modal="android"><span class="menu-icon">📱</span><div class="menu-text"><div>Android app</div><div class="menu-sub">APK · offline</div></div></button>
+        <button class="menu-item" data-modal="ios"><span class="menu-icon">🍎</span><div class="menu-text"><div>iOS · Add to Home</div><div class="menu-sub">Safari → Share</div></div></button>
+        <button class="menu-item" data-modal="termux"><span class="menu-icon">⌨️</span><div class="menu-text"><div>Termux CLI</div></div></button>
+        <div class="menu-divider"></div>
+        <div class="menu-label">About</div>
+        <button class="menu-item" data-modal="about"><span class="menu-icon">ℹ️</span><div class="menu-text"><div>About agogoTTS</div></div></button>
+        <button class="menu-item" data-modal="press"><span class="menu-icon">📰</span><div class="menu-text"><div>Press kit</div></div></button>
+        <div class="menu-divider"></div>
+        <div class="menu-label">Trust</div>
+        <button class="menu-item" data-modal="privacy"><span class="menu-icon">🔒</span><div class="menu-text"><div>Privacy</div></div></button>
+        <button class="menu-item" data-modal="terms"><span class="menu-icon">📄</span><div class="menu-text"><div>Terms</div></div></button>
+        <button class="menu-item" data-modal="ethics"><span class="menu-icon">🌱</span><div class="menu-text"><div>Data ethics</div></div></button>
+        <div class="menu-divider"></div>
+        <button class="menu-item" data-modal="support"><span class="menu-icon">☕</span><div class="menu-text"><div>Support</div></div></button>
+      </div>
+    </div>
+  </header>
+  <div class="malawi-rule"></div>
+
+  <main id="main">
+    <!-- STUDIO -->
+    <section id="tab-studio" class="tab-panel active">
+      <div class="greeting">
+        <h1 lang="ny">Moni!</h1>
+        <p>Type your text below, and let's bring it to life.</p>
+      </div>
+      <div class="studio-card">
+        <div class="card-meta">
+          <span><strong>Chichewa</strong> · Malawi</span>
+          <span class="ond-device-badge" id="source-badge">On-device</span>
+        </div>
+        
+        <div class="sample-row">
+          <span class="sample-label">Try one:</span>
+          <button class="chip" data-text="Moni, muli bwanji?">Moni, muli bwanji?</button>
+          <button class="chip" data-text="Zikomo kwambiri.">Zikomo kwambiri.</button>
+          <button class="chip" data-text="Ndili bwino, zikomo. Kaya inu?">Ndili bwino, zikomo.</button>
+        </div>
+
+        <textarea id="tts-text" maxlength="600" placeholder="Lembani mawu anu pano…" lang="ny"></textarea>
+        <div class="textarea-footer">
+          <span>Approx. <span id="duration-estimate">0s</span> audio</span>
+          <span><span id="char-count">0</span> / 600</span>
+        </div>
+
+        <div class="download-panel" id="download-panel">
+          <div class="download-title">
+            <span>Downloading voice model…</span>
+            <button class="download-cancel" id="download-cancel">Cancel</button>
+          </div>
+          <div class="download-bar"><div class="download-fill" id="download-fill"></div></div>
+          <div class="download-meta">
+            <span id="download-mb">0.0 MB / 38.0 MB</span>
+            <span id="download-percent">0%</span>
+          </div>
+        </div>
+
+        <div class="actions">
+          <div class="status" id="status" data-tone="ready">
+            <span class="status-dot"></span>
+            <span id="status-text">Ready when you are.</span>
+          </div>
+          <button class="btn-primary" id="generate-btn">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a4.5 4.5 0 0 0-4.5 4.5v3a1.5 1.5 0 0 0 3 0V6a1.5 1.5 0 0 1 3 0v6a1.5 1.5 0 0 0 3 0V6A4.5 4.5 0 0 0 8 1.5Z"/></svg>
+            Generate voice
+          </button>
+        </div>
+        <div class="voice-disclaimer"><strong>AI-generated voice</strong> · do not impersonate or defraud</div>
+      </div>
+
+      <div class="audio-result hidden" id="audio-result">
+        <div class="audio-header">
+          <h2>The voice</h2>
+          <button class="btn-secondary" id="download-btn">WAV</button>
+        </div>
+        <div class="player">
+          <button class="play-btn" id="play-btn">
+            <svg viewBox="0 0 14 14" fill="currentColor" id="play-icon"><path d="M3.5 1.8v10.4a.5.5 0 0 0 .77.42l8.3-5.2a.5.5 0 0 0 0-.84l-8.3-5.2a.5.5 0 0 0-.77.42Z"/></svg>
+          </button>
+          <div class="waveform" id="waveform"></div>
+          <span class="time" id="time">0:00</span>
+        </div>
+        <div class="quality-hint">
+          Using <strong id="quality-label">Standard</strong> quality
+        </div>
+      </div>
+    </section>
+
+    <!-- LIBRARY -->
+    <section id="tab-library" class="tab-panel">
+      <h2 style="font-style:italic;font-weight:400;color:var(--indigo);">My Audio</h2>
+      <p style="font-size:13px;color:var(--ink-faint);margin-top:6px;">Saved on this device only.</p>
+      <ul class="library-list" id="library-list"></ul>
+      <p id="library-empty" class="empty-state">Nothing here yet.</p>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="tab-panel">
+      <h2 style="font-style:italic;font-weight:400;color:var(--indigo);">Settings</h2>
+      <div class="setting-group">
+        <div class="setting-label">
+          <div>Voice Source</div>
+          <div class="muted">Online is faster, On-device is private.</div>
+        </div>
+        <div class="segmented" id="setting-source">
+          <button data-value="device" class="active">On-device</button>
+          <button data-value="online">Online</button>
+        </div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-label">
+          <div>Voice Quality</div>
+          <div class="muted">Applies to On-device generation.</div>
+        </div>
+        <div class="segmented" id="setting-quality">
+          <button data-value="standard" class="active">Standard (38MB)</button>
+          <button data-value="high">High (114MB)</button>
+        </div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-label">
+          <div>Model Status</div>
+          <div class="muted" id="model-detail">vits_chichewa_int8.onnx</div>
+        </div>
+        <span class="status-ok" id="model-status">Ready</span>
+      </div>
+      <div class="setting-group">
+        <div class="setting-label">
+          <div>Clear History</div>
+          <div class="muted">Delete all saved clips.</div>
+        </div>
+        <button class="btn-secondary" id="clear-history">Clear</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div>UG Artworks · designed by <strong style="color:var(--terracotta);">James Mlelemba</strong></div>
+    <div class="footer-links">
+      <button data-modal="privacy">Privacy</button>
+      <button data-modal="terms">Terms</button>
+      <button data-modal="ethics">Ethics</button>
+    </div>
+    <div>v1.0.0</div>
+  </footer>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     CUSTOM 404 PAGE (Triggers if URL is not / or /index.html)
+     ═══════════════════════════════════════════════════════ -->
+<div id="page-404">
+  <h1>404</h1>
+  <p>Moni! We couldn't find that page. The bumblebee must have flown too far.</p>
+  <a href="/">Return to Studio</a>
+</div>
+
+<!-- Modals & Toasts -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" id="modal-close">×</button>
+    <h2 id="modal-title"></h2>
+    <div class="modal-sub" id="modal-sub"></div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+/* ============================================================
+   ROUTER (404 CHECK)
+   ============================================================ */
+const path = window.location.pathname;
+if (path !== "/" && path !== "/index.html" && path !== "") {
+  document.getElementById("app-content").style.display = "none";
+  document.getElementById("page-404").classList.add("active");
+}
+
+/* ============================================================
+   CORE STATE & CONFIG
+   ============================================================ */
+const WORKER_URL = "https://agogo-proxy.ugartworks-comp.workers.dev";
+const GITHUB_BASE = "https://github.com/ugartworkscomp-svg/agogo-tts/releases/download/v1.0/";
+
+const PHONEME_MAP = {
+  "_": 0, "^": 1, "$": 2, " ": 3, "1": 4, "a": 5, "b": 6, "c": 7, "d": 8, "e": 9,
+  "f": 10, "g": 11, "h": 12, "i": 13, "j": 14, "k": 15, "l": 16, "m": 17, "n": 18,
+  "o": 19, "p": 20, "r": 21, "s": 22, "t": 23, "u": 24, "v": 25, "w": 26, "y": 27, "z": 28
+};
+const CHAR2ID = {}; "abcdefghijklmnoprstuvwyz".split("").forEach((c, i) => CHAR2ID[c] = i + 1);
+
+let currentSource = localStorage.getItem("agogo_source") || "device";
+let currentQuality = localStorage.getItem("agogo_quality") || "standard";
+let currentAudioBlob = null;
+let currentText = "";
+let isPlaying = false;
+
+/* ============================================================
+   UI & TOASTS
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+function showToast(msg, type = "info") {
+  const t = document.createElement("div");
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  $("toast-container").appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+// Tabs
+document.querySelectorAll("nav.tabs button").forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll("nav.tabs button").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    $("tab-" + b.dataset.tab).classList.add("active");
+  };
+});
+
+// Menu
+const menuBtn = $("menu-btn"), menuDrop = $("menu-dropdown");
+menuBtn.onclick = (e) => { e.stopPropagation(); menuDrop.classList.toggle("active"); };
+document.addEventListener("click", (e) => { if (!menuDrop.contains(e.target) && e.target !== menuBtn) menuDrop.classList.remove("active"); });
+
+// Settings
+document.querySelectorAll(".segmented").forEach(group => {
+  group.querySelectorAll("button").forEach(btn => {
+    btn.onclick = () => {
+      group.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      if (group.id === "setting-source") { currentSource = btn.dataset.value; localStorage.setItem("agogo_source", currentSource); updateBadge(); }
+      if (group.id === "setting-quality") { currentQuality = btn.dataset.value; localStorage.setItem("agogo_quality", currentQuality); $("quality-label").textContent = currentQuality === "high" ? "High" : "Standard"; }
+    };
+  });
+});
+function updateBadge() { $("source-badge").textContent = currentSource === "device" ? "On-device" : "Online (Beta)"; }
+updateBadge();
+
+// Textarea
+const textarea = $("tts-text");
+textarea.oninput = () => {
+  const len = textarea.value.length;
+  $("char-count").textContent = len;
+  const sec = Math.round(len / 12);
+  $("duration-estimate").textContent = sec + "s";
+};
+document.querySelectorAll(".chip").forEach(c => {
+  c.onclick = () => { textarea.value = c.dataset.text; textarea.oninput(); };
+});
+
+/* ============================================================
+   ONNX ENGINE (ON-DEVICE)
+   ============================================================ */
+const ONNX = {
+  g2p: null, vits: null, ready: false, loading: null,
+  async init(onProgress) {
+    if (this.ready) return;
+    if (this.loading) return this.loading;
+    this.loading = (async () => {
+      ort.env.wasm.numThreads = 1;
+      const proxy = (u) => `${WORKER_URL}/model?url=${encodeURIComponent(u)}`;
+      
+      onProgress?.(5, "Loading tone model…");
+      const g2pBuf = await fetch(proxy(GITHUB_BASE + "acoustic_g2p.onnx")).then(r => r.arrayBuffer());
+      this.g2p = await ort.InferenceSession.create(g2pBuf, { executionProviders: ["wasm"] });
+
+      onProgress?.(15, "Downloading voice model…");
+      const vitsFile = currentQuality === "high" ? "vits_chichewa.onnx" : "vits_chichewa_int8.onnx";
+      const vitsResp = await fetch(proxy(GITHUB_BASE + vitsFile));
+      if (!vitsResp.ok) throw new Error("Model fetch failed");
+      const total = +vitsResp.headers.get("Content-Length") || 38 * 1024 * 1024;
+      const reader = vitsResp.body.getReader();
+      const parts = []; let received = 0;
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        parts.push(value); received += value.length;
+        onProgress?.(15 + (received / total) * 75, `Downloading voice… ${(received/1048576).toFixed(1)} MB`);
+      }
+      onProgress?.(92, "Preparing voice…");
+      const vitsBuf = await new Blob(parts).arrayBuffer();
+      this.vits = await ort.InferenceSession.create(vitsBuf, { executionProviders: ["wasm"] });
+      this.ready = true;
+      onProgress?.(100, "Ready.");
+    })();
+    return this.loading;
+  },
+  argmax(a) { let m = -Infinity, ix = 0; for (let i = 0; i < a.length; i++) if (a[i] > m) { m = a[i]; ix = i; } return ix; },
+  async getTones(word) {
+    word = word.toLowerCase().replace(/[^a-z]/g, "");
+    if (!word) return "";
+    const ids = new BigInt64Array(word.length);
+    for (let i = 0; i < word.length; i++) ids[i] = BigInt(CHAR2ID[word[i]] || 0);
+    const out = await this.g2p.run({ input: new ort.Tensor("int64", ids, [1, word.length]) });
+    const d = out.output.data;
+    let toned = "";
+    for (let i = 0; i < word.length; i++) {
+      toned += word[i];
+      const probs = [d[i*5], d[i*5+1], d[i*5+2], d[i*5+3], d[i*5+4]];
+      if ([2,3,4].includes(this.argmax(probs))) toned += "1";
+    }
+    return toned;
+  },
+  async synthesize(text) {
+    const chunks = text.split(/(?<=[.!?])\s+/).filter(c => c.trim());
+    const all = [];
+    for (const chunk of chunks) {
+      const words = chunk.trim().split(/\s+/);
+      const toned = [];
+      for (const w of words) toned.push(await this.getTones(w));
+      const ids = [PHONEME_MAP["^"]];
+      for (const ch of toned.join(" ")) if (PHONEME_MAP[ch] !== undefined) ids.push(PHONEME_MAP[ch]);
+      ids.push(PHONEME_MAP["$"]);
+
+      const out = await this.vits.run({
+        input:         new ort.Tensor("int64", new BigInt64Array(ids.map(x => BigInt(x))), [1, ids.length]),
+        input_lengths: new ort.Tensor("int64", new BigInt64Array([BigInt(ids.length)]), [1]),
+        scales:        new ort.Tensor("float32", new Float32Array([0.6, 1.15, 0.8]), [3])
+      });
+      all.push(out.output.data);
+      all.push(new Float32Array(8820));
+    }
+    const total = all.reduce((a, v) => a + v.length, 0);
+    const pcm = new Float32Array(total);
+    let off = 0; for (const a of all) { pcm.set(a, off); off += a.length; }
+    return pcm;
+  }
+};
+
+function encodeWAV(pcm, rate = 22050) {
+  const buf = new ArrayBuffer(44 + pcm.length * 2);
+  const v = new DataView(buf);
+  const s = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  s(0, "RIFF"); v.setUint32(4, 36 + pcm.length * 2, true); s(8, "WAVE"); s(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); s(36, "data");
+  v.setUint32(40, pcm.length * 2, true);
+  let o = 44;
+  for (let i = 0; i < pcm.length; i++, o += 2) {
+    const x = Math.max(-1, Math.min(1, pcm[i]));
+    v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7FFF, true);
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+/* ============================================================
+   GENERATE FLOW
+   ============================================================ */
+const bee = $("bee"), statusEl = $("status"), statusText = $("status-text"), generateBtn = $("generate-btn");
+
+async function generateSpeech() {
+  const text = textarea.value.trim();
+  if (!text) { textarea.focus(); return; }
+
+  generateBtn.disabled = true;
+  $("audio-result").classList.add("hidden");
+  bee.classList.add("synthesizing");
+
+  try {
+    if (currentSource === "online") {
+      statusText.textContent = "Sending to server…";
+      statusEl.dataset.tone = "ochre";
+      const res = await fetch(`${WORKER_URL}/synthesize`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, quality: currentQuality })
+      });
+      if (!res.ok) throw new Error("Online server unavailable");
+      currentAudioBlob = await res.blob();
+    } else {
+      if (!ONNX.ready) {
+        statusText.textContent = "Downloading models…";
+        statusEl.dataset.tone = "ochre";
+        $("download-panel").classList.add("active");
+        await ONNX.init((pct, msg) => {
+          $("download-fill").style.width = pct + "%";
+          $("download-percent").textContent = Math.round(pct) + "%";
+          if (msg) $("download-mb").textContent = msg;
+        });
+        $("download-panel").classList.remove("active");
+      }
+      statusText.textContent = "Synthesizing…";
+      statusEl.dataset.tone = "terracotta";
+      const pcm = await ONNX.synthesize(text);
+      currentAudioBlob = encodeWAV(pcm);
+    }
+
+    currentText = text;
+    setupPlayer(currentAudioBlob, text);
+    statusText.textContent = "Ready.";
+    statusEl.dataset.tone = "green";
+    addToLibrary(text);
+  } catch (e) {
+    console.error(e);
+    showToast(e.message || "Generation failed.", "error");
+    statusText.textContent = "Failed.";
+    statusEl.dataset.tone = "ready";
+  } finally {
+    bee.classList.remove("synthesizing");
+    generateBtn.disabled = false;
+  }
+}
+generateBtn.onclick = generateSpeech;
+
+/* ============================================================
+   AUDIO PLAYER
+   ============================================================ */
+const playBtn = $("play-btn"), waveform = $("waveform"), timeEl = $("time"), audioResult = $("audio-result");
+let audioEl = new Audio();
+
+function setupPlayer(blob, text) {
+  audioResult.classList.remove("hidden");
+  const url = URL.createObjectURL(blob);
+  audioEl.src = url;
+  
+  waveform.innerHTML = "";
+  let s = text.length * 9301;
+  for (let i = 0; i < 56; i++) {
+    s = (s * 9301 + 49297) % 233280;
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    bar.style.height = (12 + (s / 233280) * 22) + "px";
+    waveform.appendChild(bar);
+  }
+
+  audioEl.onended = stopPlayback;
+  audioEl.ontimeupdate = () => {
+    timeEl.textContent = Math.floor(audioEl.currentTime) + "s";
+  };
+}
+
+playBtn.onclick = () => {
+  if (isPlaying) { audioEl.pause(); stopPlayback(); }
+  else { audioEl.play(); startPlayback(); }
+};
+
+function startPlayback() {
+  isPlaying = true;
+  waveform.classList.add("playing");
+  bee.classList.add("playing");
+  $("play-icon").innerHTML = '<rect x="2.5" y="2" width="3" height="10" rx="0.5"/><rect x="8.5" y="2" width="3" height="10" rx="0.5"/>';
+}
+
+function stopPlayback() {
+  isPlaying = false;
+  waveform.classList.remove("playing");
+  bee.classList.remove("playing");
+  $("play-icon").innerHTML = '<path d="M3.5 1.8v10.4a.5.5 0 0 0 .77.42l8.3-5.2a.5.5 0 0 0 0-.84l-8.3-5.2a.5.5 0 0 0-.77.42Z"/>';
+}
+
+$("download-btn").onclick = () => {
+  if (!currentAudioBlob) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(currentAudioBlob);
+  a.download = `agogo_${Date.now()}.wav`;
+  a.click();
+};
+
+/* ============================================================
+   LIBRARY (LOCAL STORAGE)
+   ============================================================ */
+let library = JSON.parse(localStorage.getItem("agogo_history") || "[]");
+const libList = $("library-list"), libEmpty = $("library-empty");
+
+function addToLibrary(text) {
+  library.unshift({ text, time: Date.now(), id: Date.now() });
+  if (library.length > 50) library.pop();
+  localStorage.setItem("agogo_history", JSON.stringify(library));
+  renderLibrary();
+}
+
+function renderLibrary() {
+  libList.innerHTML = "";
+  libEmpty.style.display = library.length ? "none" : "block";
+  library.forEach(item => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <div>
+        <div class="lib-text">${item.text.slice(0, 60)}${item.text.length > 60 ? '...' : ''}</div>
+        <div class="lib-meta">${new Date(item.time).toLocaleTimeString()}</div>
+      </div>
+      <button class="icon-btn" onclick="alert('Audio saving to library will be added in v1.1')">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V2.25A.75.75 0 0 1 8 1.5Z"/></svg>
+      </button>
+    `;
+    libList.appendChild(li);
+  });
+}
+renderLibrary();
+
+$("clear-history").onclick = () => {
+  library = []; localStorage.removeItem("agogo_history"); renderLibrary(); showToast("History cleared.");
+};
+
+/* ============================================================
+   MODALS
+   ============================================================ */
+const MODALS = {
+  about: { title: "About agogoTTS", sub: "Chichewa, spoken with care.", html: "<p>Built in Malawi by UG Artworks. A fully local, on-device neural voice engine.</p>" },
+  privacy: { title: "Privacy", sub: "Your data stays yours.", html: "<p>When using On-device mode, your text never leaves your device. It is processed entirely in your browser.</p>" },
+  terms: { title: "Terms of Use", sub: "Please use responsibly.", html: "<p>Do not use this tool to impersonate real people, create fraudulent audio, or train competing AI models.</p>" },
+  ethics: { title: "Data Ethics", sub: "Consent and respect.", html: "<p>Trained on 4.7 hours of single-speaker Chichewa audio with explicit consent. Built to augment, not replace, human speakers.</p>" },
+  android: { title: "Android", sub: "Coming soon.", html: "<p>The APK is in development. For now, use the web app or add to home screen.</p>" },
+  ios: { title: "iOS", sub: "Add to Home Screen.", html: "<p>Tap the Share button in Safari and select 'Add to Home Screen' to install.</p>" },
+  termux: { title: "Termux CLI", sub: "For developers.", html: "<p>CLI release is pending. Check back soon.</p>" },
+  press: { title: "Press Kit", sub: "For media.", html: "<p>Contact hello@ugartworks.mw for assets and interviews.</p>" },
+  support: { title: "Support", sub: "Keep it free.", html: "<p>Donation links coming soon.</p>" }
+};
+
+const modalOverlay = $("modal-overlay");
+document.querySelectorAll("[data-modal]").forEach(el => {
+  el.onclick = () => {
+    const data = MODALS[el.dataset.modal];
+    if (!data) return;
+    $("modal-title").textContent = data.title;
+    $("modal-sub").textContent = data.sub;
+    $("modal-body").innerHTML = data.html;
+    modalOverlay.classList.add("active");
+    menuDrop.classList.remove("active");
+  };
+});
+$("modal-close").onclick = () => modalOverlay.classList.remove("active");
+modalOverlay.onclick = (e) => { if (e.target === modalOverlay) modalOverlay.classList.remove("active"); };
+</script>
+</body>
+</html>
